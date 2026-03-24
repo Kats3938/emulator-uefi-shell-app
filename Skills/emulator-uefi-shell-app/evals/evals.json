@@ -1,0 +1,35 @@
+{
+  "skill_name": "emulator-uefi-shell-app",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "如何创建一个UEFI Shell应用程序？需要哪些文件？",
+      "expected_output": "应该说明目录结构、INF文件模板、C源文件模板、必要的头文件和库",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我写了一个Shell应用，怎么把它加入到EmulatorPkg中运行？",
+      "expected_output": "应该解释DSC和FDF文件的修改方法，以及如何重新编译和运行",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "编译时出现中文编码错误C4819，怎么解决？",
+      "expected_output": "应该提供在INF文件或DSC文件中添加/wd4819等编译参数的方法",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "如何在Shell应用中使用GOP进行图形渲染？",
+      "expected_output": "应该提供GOP协议的获取、模式设置、Blt操作的代码示例",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "如何在Emulator中调试Shell应用？",
+      "expected_output": "应该解释Print调试、DebugLib使用、VS2019调试器使用方法",
+      "files": []
+    }
+  ]
+}
