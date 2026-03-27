@@ -204,56 +204,85 @@ UefiMain (
 
 ### 3.4 GOP 图形应用模板
 
+**重要：EmulatorPkg 的 GOP 可能没有设置 FrameBufferBase，必须使用 Blt() 方法。**
+
 ```c
 #include <Uefi.h>
 #include <Protocol/GraphicsOutput.h>
 #include <Library/UefiLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/MemoryAllocationLib.h>
+#include <Library/DebugLib.h>
 
-EFI_STATUS
-EFIAPI
-UefiMain (
-  IN EFI_HANDLE        ImageHandle,
-  IN EFI_SYSTEM_TABLE  *SystemTable
-  )
+static EFI_GRAPHICS_OUTPUT_PROTOCOL *gGOP = NULL;
+static UINT32 *gBackBuffer = NULL;  /* 后备缓冲区 */
+static UINT32 gScreenWidth = 0;
+static UINT32 gScreenHeight = 0;
+
+EFI_STATUS GraphicsInit(VOID)
 {
   EFI_STATUS Status;
-  EFI_GRAPHICS_OUTPUT_PROTOCOL *Gop;
-  UINTN Mode;
-  EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info;
-  UINTN InfoSize;
 
-  // 定位 GOP
+  /* 定位 GOP */
   Status = gBS->LocateProtocol(
     &gEfiGraphicsOutputProtocolGuid,
     NULL,
-    (VOID **)&Gop
+    (VOID **)&gGOP
   );
   if (EFI_ERROR(Status)) {
-    Print(L"Locate GOP failed: %r\n", Status);
+    DEBUG((DEBUG_ERROR, "[Graphics] LocateProtocol failed: %r\n", Status));
     return Status;
   }
 
-  // 查询并设置 1024x768 模式
-  for (Mode = 0; Mode < Gop->Mode->MaxMode; Mode++) {
-    Status = Gop->QueryMode(Gop, Mode, &InfoSize, &Info);
-    if (EFI_ERROR(Status)) continue;
-    if (Info->HorizontalResolution == 1024 &&
-        Info->VerticalResolution == 768) {
-      Gop->SetMode(Gop, Mode);
-      break;
-    }
-  }
+  gScreenWidth = gGOP->Mode->Info->HorizontalResolution;
+  gScreenHeight = gGOP->Mode->Info->VerticalResolution;
+  DEBUG((DEBUG_INFO, "[Graphics] Resolution: %dx%d\n", gScreenWidth, gScreenHeight));
 
-  // 填充屏幕为蓝色
-  EFI_GRAPHICS_OUTPUT_BLT_PIXEL Blue = {255, 0, 0, 0};  // BGRA
-  Gop->Blt(Gop, &Blue, EfiBltVideoFill,
-           0, 0, 0, 0, 1024, 768, 0);
+  /* 分配后备缓冲区（双缓冲） */
+  gBackBuffer = AllocatePool(gScreenWidth * gScreenHeight * sizeof(UINT32));
+  if (gBackBuffer == NULL) {
+    DEBUG((DEBUG_ERROR, "[Graphics] AllocatePool failed\n"));
+    return EFI_OUT_OF_RESOURCES;
+  }
 
   return EFI_SUCCESS;
 }
+
+/* 设置像素到后备缓冲区 */
+VOID PutPixel(UINT32 x, UINT32 y, UINT32 color)
+{
+  if (x < gScreenWidth && y < gScreenHeight) {
+    gBackBuffer[y * gScreenWidth + x] = color;
+  }
+}
+
+/* 将后备缓冲区提交到屏幕 */
+VOID Present(VOID)
+{
+  gGOP->Blt(
+    gGOP,
+    (EFI_GRAPHICS_OUTPUT_BLT_PIXEL *)gBackBuffer,
+    EfiBltBufferToVideo,
+    0, 0, 0, 0,
+    gScreenWidth, gScreenHeight,
+    gScreenWidth * sizeof(UINT32)
+  );
+}
+
+/* 颜色定义（BGR格式） */
+#define COLOR_BLACK   0x00000000
+#define COLOR_WHITE   0x00FFFFFF
+#define COLOR_RED     0x000000FF
+#define COLOR_GREEN   0x0000FF00
+#define COLOR_BLUE    0x00FF0000
+#define COLOR_YELLOW  0x0000FFFF
 ```
+
+**关键要点：**
+1. **使用双缓冲** - 先写入内存缓冲区，再一次性 Blt 到屏幕，避免闪烁
+2. **不要访问 FrameBufferBase** - Emulator 可能未设置，使用 `Blt()` 替代
+3. **颜色格式** - UEFI 使用 BGR（蓝绿红）格式，非 RGB
+4. **边界检查** - 所有绘图函数必须检查坐标是否在屏幕范围内
 
 ---
 
@@ -365,18 +394,95 @@ Print(L"值: %d, 状态: %r\n", value, Status);
 | `%s` | Unicode 字符串 |
 | `%a` | ASCII 字符串 |
 
-### 6.2 DebugLib 调试
+### 6.2 DebugLib 串口调试（推荐）
+
+**核心优势：** Claude 可以通过监控模拟器的串口输出（stdout/stderr）来分析问题，无需用户告知屏幕显示内容。
+
+**使用方法：**
 
 ```c
 #include <Library/DebugLib.h>
 
-DEBUG((DEBUG_INFO, "信息消息\n"));
-DEBUG((DEBUG_ERROR, "错误: %r\n", Status));
+/* 在 INF 中添加 DebugLib */
+[LibraryClasses]
+  DebugLib
 
-ASSERT(Status == EFI_SUCCESS);
+/* 调试输出示例 */
+DEBUG((DEBUG_INFO, "[MyApp] Starting initialization...\n"));
+DEBUG((DEBUG_INFO, "[MyApp] Resolution: %dx%d\n", width, height));
+DEBUG((DEBUG_ERROR, "[MyApp] Error: %r (0x%x)\n", Status, Status));
+DEBUG((DEBUG_WARN, "[MyApp] Warning: value=%d\n", value));
 ```
 
-### 6.3 配置调试级别
+**调试级别：**
+
+| 级别 | 宏 | 用途 |
+|------|-----|------|
+| 错误 | `DEBUG_ERROR` | 严重错误，必须关注 |
+| 警告 | `DEBUG_WARN` | 潜在问题 |
+| 信息 | `DEBUG_INFO` | 一般调试信息 |
+| 详细 | `DEBUG_VERBOSE` | 详细跟踪信息 |
+
+**最佳实践：**
+
+```c
+EFI_STATUS DoSomething(VOID)
+{
+    DEBUG((DEBUG_INFO, "[Module] DoSomething: Start\n"));
+
+    /* 关键步骤添加调试输出 */
+    Status = gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid, NULL, (VOID **)&Gop);
+    if (EFI_ERROR(Status)) {
+        DEBUG((DEBUG_ERROR, "[Module] LocateProtocol failed: %r\n", Status));
+        return Status;
+    }
+    DEBUG((DEBUG_INFO, "[Module] GOP found, Resolution: %dx%d\n",
+           Gop->Mode->Info->HorizontalResolution,
+           Gop->Mode->Info->VerticalResolution));
+
+    /* 高频操作避免过多输出 */
+    for (i = 0; i < count; i++) {
+        /* 不要在循环中输出，除非出错 */
+        if (error) {
+            DEBUG((DEBUG_ERROR, "[Module] Error at index %d\n", i));
+        }
+    }
+
+    DEBUG((DEBUG_INFO, "[Module] DoSomething: Done\n"));
+    return EFI_SUCCESS;
+}
+```
+
+### 6.3 监控串口输出
+
+**运行模拟器并捕获调试输出：**
+
+```bash
+# Windows (Git Bash / PowerShell)
+cd Build/EmulatorX64/DEBUG_VS2019/X64
+./WinHost.exe 2>&1 | grep -i "\[MyApp\]"
+
+# 过滤特定级别
+./WinHost.exe 2>&1 | grep -E "ERROR|WARN"
+
+# 保存到文件
+./WinHost.exe 2>&1 | tee debug.log
+```
+
+**常用过滤命令：**
+
+```bash
+# 只看特定模块
+./WinHost.exe 2>&1 | grep "\[Graphics\]"
+
+# 排除噪音
+./WinHost.exe 2>&1 | grep -v "PROGRESS CODE"
+
+# 实时监控错误
+./WinHost.exe 2>&1 | grep --line-buffered "ERROR"
+```
+
+### 6.4 配置调试级别
 
 在 DSC 文件中：
 
@@ -389,7 +495,33 @@ ASSERT(Status == EFI_SUCCESS);
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x1f
 ```
 
-### 6.4 VS2019 调试器
+### 6.5 图形应用调试技巧
+
+**问题：屏幕闪烁后崩溃**
+
+常见原因及调试方法：
+
+```c
+/* 1. 检查帧缓冲区是否有效 */
+DEBUG((DEBUG_INFO, "[Graphics] FrameBufferBase: 0x%lx\n",
+       (UINT64)Gop->Mode->FrameBufferBase));
+if (Gop->Mode->FrameBufferBase == 0) {
+    DEBUG((DEBUG_ERROR, "[Graphics] FrameBufferBase is NULL, use Blt() instead\n"));
+}
+
+/* 2. 检查分辨率是否超出范围 */
+DEBUG((DEBUG_INFO, "[Graphics] Screen: %dx%d, Map needs: %dx%d\n",
+       screenWidth, screenHeight, mapWidth, mapHeight));
+
+/* 3. 检查内存分配 */
+VOID *buffer = AllocatePool(size);
+DEBUG((DEBUG_INFO, "[Graphics] Allocated %d bytes at 0x%lx\n", size, (UINT64)buffer));
+if (buffer == NULL) {
+    DEBUG((DEBUG_ERROR, "[Graphics] Allocation failed!\n"));
+}
+```
+
+### 6.6 VS2019 调试器
 
 1. 打开 VS2019
 2. 文件 → 打开 → 项目
@@ -488,3 +620,21 @@ FreePages(Pages, PageCount);
 | 中文编码错误 | 添加 `/wd4819 /source-charset:utf-8` |
 | GOP 定位失败 | 确保模拟器启动完成后再运行 |
 | Print 无输出 | 检查控制台重定向设置 |
+| 屏幕闪烁后崩溃 | 使用双缓冲 + Blt，不要直接访问 FrameBufferBase |
+| 分辨率超出屏幕 | 缩小 TILE_SIZE 或检查 UI 布局是否超出 640x480 |
+| 内存分配失败 | 检查缓冲区大小计算是否溢出，使用 (UINTN) 强制转换 |
+
+---
+
+## 自动启动脚本
+
+在应用程序目录创建 `startup.nsh`，模拟器启动时自动执行：
+
+```bash
+# startup.nsh - 放在与 WinHost.exe 相同目录
+@echo -off
+echo Starting My Application...
+MyApp.efi
+echo Application exited.
+pause
+```
